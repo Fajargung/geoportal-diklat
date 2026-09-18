@@ -1,53 +1,31 @@
 import { NextResponse } from "next/server";
-import { db } from "../../../../../lib/db";
-import bcrypt from "bcryptjs";
+import { verifyCredentials } from "../../../../../lib/auth/verifyCredentials";
+import { signAccessToken } from "../../../../../lib/auth/jwt";
 
 export async function POST(request) {
-    try {
-        const body = await request.json();
-        const { email, password } = body;
+  try {
+    const { email, password } = await request.json();
 
-        if (!email || !password) {
-            return NextResponse.json(
-                { message: "Email dan password wajib diisi!" },
-                { status: 400 }
-            );
-        }
-
-        // 1. Cari user berdasarkan email saja
-        const user = await db.users.findFirst({
-            where: { email: email },
-        });
-
-        if (!user) {
-            return NextResponse.json(
-                { message: "Email atau password salah!" },
-                { status: 401 }
-            );
-        }
-
-        // 2. Bandingkan password plain text dari input dengan password hashed di DB
-        const isPasswordValid = await bcrypt.compare(password, user.password);
-
-        if (!isPasswordValid) {
-            return NextResponse.json(
-                { message: "Email atau password salah!" },
-                { status: 401 }
-            );
-        }
-
-        return NextResponse.json(
-            {
-                message: "Login berhasil",
-                user_id: user.user_id,
-                email: user.email,
-            },
-            { status: 200 }
-        );
-    } catch (error) {
-        return NextResponse.json(
-            { message: "Terjadi kesalahan server", error: error.message },
-            { status: 500 }
-        );
+    if (!email || !password) {
+      return NextResponse.json(
+        { message: "Email dan password wajib diisi!" },
+        { status: 400 }
+      );
     }
+
+    const user = await verifyCredentials(email, password);
+    const accessToken = signAccessToken(user);
+
+    return NextResponse.json(
+      {
+        message: "Login berhasil",
+        access_token: accessToken,
+        user: { id: user.user_id, email: user.email, role: user.role },
+      },
+      { status: 200 }
+    );
+  } catch (error) {
+    const status = error.message.includes("aktivasi") ? 403 : 401;
+    return NextResponse.json({ message: error.message }, { status });
+  }
 }
